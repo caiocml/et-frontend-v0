@@ -32,6 +32,7 @@ const navigation = [
   { name: "Projects", href: "/projects", icon: Folder },
   { name: "Transactions", href: "/transactions", icon: Wallet },
   { name: "Categories", href: "/categories", icon: Tags },
+  { name: "Payment Methods", href: "/payment-methods", icon: CreditCard },
   { name: "Invoices", href: "/invoices", icon: Receipt },
   { name: "Payments", href: "/payments", icon: CreditCard },
   { name: "Members", href: "/members", icon: Users2 },
