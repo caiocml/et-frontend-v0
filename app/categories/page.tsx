@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Search, Plus, Edit, Trash2 } from "lucide-react"
+import { Search, Plus, Edit, Trash2, CheckCircle, XCircle } from "lucide-react"
 import UtilApiService from "@/lib/utilApiService"
 import { toast } from "@/components/ui/use-toast"
 
@@ -40,6 +40,7 @@ interface Category {
   title: string
   description: string
   createdAt: string
+  status?: "active" | "inactive"
 }
 
 export default function CategoriesPage() {
@@ -117,7 +118,7 @@ export default function CategoriesPage() {
   }
 
   // Handle form submission
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!title.trim()) {
       toast({
         title: "Error",
@@ -127,48 +128,85 @@ export default function CategoriesPage() {
       return
     }
 
-    // In a real app, you would call your API here
-    if (isEditing && currentCategory) {
-      // Update existing category
-      const updatedCategories = categories.map(cat => 
-        cat.id === currentCategory.id 
-          ? { ...cat, title, description }
-          : cat
-      )
-      setCategories(updatedCategories)
-      toast({
-        title: "Success",
-        description: "Category updated successfully"
-      })
-    } else {
-      // Create new category
-      const newCategory: Category = {
-        id: 1, // todo retirar esse id da criacao
-        title,
-        description,
-        createdAt: new Date().toISOString().split('T')[0]
+    try {
+      if (isEditing && currentCategory) {
+        // Update existing category
+        const response = await UtilApiService.put(`/categories/${currentCategory.id}`, {
+          title,
+          description
+        })
+        
+        if (response) {
+          // Update the local state with the updated category
+          const updatedCategories = categories.map(cat => 
+            cat.id === currentCategory.id 
+              ? { ...cat, title, description }
+              : cat
+          )
+          setCategories(updatedCategories)
+          
+          toast({
+            title: "Success",
+            description: "Category updated successfully"
+          })
+        }
+      } else {
+        // Create new category
+        const categoryData = {
+          title,
+          description
+        }
+        
+        const response = await UtilApiService.post('/categories', categoryData)
+        
+        if (response) {
+          // Add the new category (with ID from the server) to the list
+          setCategories([...categories, response])
+          
+          toast({
+            title: "Success",
+            description: "Category created successfully"
+          })
+        }
       }
-      setCategories([...categories, newCategory])
+
+      // Close dialog and reset form
+      setOpen(false)
+      resetForm()
+    } catch (error) {
+      console.error('Error saving category:', error)
       toast({
-        title: "Success",
-        description: "Category created successfully"
+        title: "Error",
+        description: isEditing 
+          ? "Failed to update category. Please try again." 
+          : "Failed to create category. Please try again.",
+        variant: "destructive"
       })
     }
-
-    // Close dialog and reset form
-    setOpen(false)
-    resetForm()
   }
 
   // Handle category deletion
-  const handleDelete = (id: string | number) => {
+  const handleDelete = async (id: string | number) => {
     if (confirm("Are you sure you want to delete this category?")) {
-      // In a real app, you would call your API here
-      setCategories(categories.filter(cat => cat.id !== id))
-      toast({
-        title: "Success",
-        description: "Category deleted successfully"
-      })
+      try {
+        // Call API to delete the category
+        await UtilApiService.delete(`/categories/${id}`)
+        
+        // Update local state by removing the deleted category
+        setCategories(categories.filter(cat => cat.id !== id))
+        
+        toast({
+          title: "Success",
+          description: "Category deleted successfully"
+        })
+      } catch (error) {
+        console.error('Error deleting category:', error)
+        toast({
+          title: "Error",
+          description: "Failed to delete category. Please try again.",
+          variant: "destructive"
+        })
+      }
     }
   }
 
@@ -214,7 +252,8 @@ export default function CategoriesPage() {
                     <TableRow>
                       <TableHead>Title</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead>Created</TableHead>
+                      <TableHead>Status</TableHead>
+
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -224,7 +263,13 @@ export default function CategoriesPage() {
                         <TableRow key={String(category.id)}>
                           <TableCell className="font-medium">{category.title}</TableCell>
                           <TableCell>{category.description}</TableCell>
-                          <TableCell>{new Date(category.createdAt).toLocaleDateString()}</TableCell>
+                          <TableCell>
+                          {category.status === "inactive" ? (
+                                <XCircle className="h-5 w-5 text-gray-400" />
+                              ) : (
+                                <CheckCircle className="h-5 w-5 text-green-500" />
+                              )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end space-x-2">
                               <Button 
