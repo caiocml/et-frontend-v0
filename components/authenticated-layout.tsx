@@ -30,7 +30,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
       <div className="flex-1">
         <TopNav />
         <div className="container mx-auto p-6 max-w-7xl">
-          <main className="w-full">{children}</main>
+            <main className="w-full">{children}</main>
         </div>
       </div>
     </div>

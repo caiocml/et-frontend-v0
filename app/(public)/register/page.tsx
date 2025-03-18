@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { AlertCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
+import UtilApiService from "@/lib/utilApiService"
 
 export default function RegisterPage() {
   const [firstName, setFirstName] = useState("")
@@ -20,6 +21,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const { register } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,37 +46,43 @@ export default function RegisterPage() {
     setLoading(true)
     
     try {
-      // In a real app, you would make an API call to register the user
-      // For now, we'll simulate a delay
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Use the register function from auth context which uses UtilApiService
+      const success = await register(firstName, lastName, email, password)
       
-      // After successful registration, redirect to login
-      router.push("/login?registered=true")
+      if (success) {
+        // After successful registration, redirect to login
+        router.push("/login?registered=true")
+      } else {
+        setError("Registration failed. Please try again.")
+      }
     } catch (error) {
-      console.error("Registration error:", error)
-      setError("Failed to register. Please try again.")
+      // If there's an error with specific message from the API
+      if (error.response && error.response.data && error.response.data.message) {
+        setError(error.response.data.message)
+      } else {
+        setError("Registration failed. Please try again.")
+      }
+      console.error('Registration error:', error)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background">
+    <div className="flex items-center justify-center min-h-screen px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
           <CardDescription>Enter your information to create an account</CardDescription>
         </CardHeader>
-        
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            
+        <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="firstName">First Name</Label>
@@ -83,10 +91,9 @@ export default function RegisterPage() {
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   placeholder="John" 
-                  required
+                  required 
                 />
               </div>
-              
               <div className="space-y-2">
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input 
@@ -94,11 +101,10 @@ export default function RegisterPage() {
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder="Doe" 
-                  required
+                  required 
                 />
               </div>
             </div>
-            
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input 
@@ -106,11 +112,10 @@ export default function RegisterPage() {
                 type="email" 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com" 
-                required
+                placeholder="john.doe@example.com" 
+                required 
               />
             </div>
-            
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input 
@@ -118,10 +123,9 @@ export default function RegisterPage() {
                 type="password" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
+                required 
               />
             </div>
-            
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirm Password</Label>
               <Input 
@@ -129,23 +133,26 @@ export default function RegisterPage() {
                 type="password" 
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                required
+                required 
               />
             </div>
-          </CardContent>
-          
-          <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating account..." : "Create account"}
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={loading}
+            >
+              {loading ? "Creating Account..." : "Create Account"}
             </Button>
-            <div className="text-center text-sm">
-              Already have an account?{" "}
-              <Link href="/login" className="text-primary hover:underline">
-                Log in
-              </Link>
-            </div>
-          </CardFooter>
-        </form>
+          </form>
+        </CardContent>
+        <CardFooter className="flex justify-center">
+          <div className="text-sm text-muted-foreground">
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary underline">
+              Sign in
+            </Link>
+          </div>
+        </CardFooter>
       </Card>
     </div>
   )

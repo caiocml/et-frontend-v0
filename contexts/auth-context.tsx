@@ -123,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       
       // Make a POST request to your registration endpoint
-      await UtilApiService.post('/auth/register', {
+      await UtilApiService.post('/users/register', {
         firstName,
         lastName,
         email,

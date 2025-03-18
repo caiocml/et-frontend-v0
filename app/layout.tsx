@@ -9,8 +9,8 @@ import type React from "react"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: "Flowers&Saints Dashboard",
-  description: "A modern, responsive financial dashboard",
+  title: "Expense Tracker",
+  description: "A modern, responsive financial expense tracker",
   generator: 'v0.dev'
 }
 
@@ -26,7 +26,7 @@ export default function RootLayout({
           <AuthProvider>
             <SettingsProvider>
               <TooltipProvider delayDuration={0}>
-                {children}
+                  {children}
               </TooltipProvider>
             </SettingsProvider>
           </AuthProvider>
