@@ -36,7 +36,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     // Handle 401 Unauthorized errors (e.g., token expired)
-    if (error.response && error.response.status === 401) {
+    if (error.response && (error.response.status === 401 || error.response.status == 403)) {
       // Clear localStorage and redirect to login if not already at login
       if (typeof window !== 'undefined' && window.location.pathname != '/login') {
         localStorage.removeItem('token');

@@ -19,6 +19,7 @@ import {
   HelpCircle,
   Menu,
   ChevronLeft,
+  Tags,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -30,6 +31,7 @@ const navigation = [
   { name: "Organization", href: "/organization", icon: Building2 },
   { name: "Projects", href: "/projects", icon: Folder },
   { name: "Transactions", href: "/transactions", icon: Wallet },
+  { name: "Categories", href: "/categories", icon: Tags },
   { name: "Invoices", href: "/invoices", icon: Receipt },
   { name: "Payments", href: "/payments", icon: CreditCard },
   { name: "Members", href: "/members", icon: Users2 },
