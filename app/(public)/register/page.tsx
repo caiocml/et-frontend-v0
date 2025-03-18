@@ -46,16 +46,21 @@ export default function RegisterPage() {
     setLoading(true)
     
     try {
-      // Use the register function from auth context which uses UtilApiService
-      const success = await register(firstName, lastName, email, password)
+      // Use the register function from auth context
+      const result = await register(firstName, lastName, email, password)
       
-      if (success) {
-        // After successful registration, redirect to login
-        router.push("/login?registered=true")
+      if (result.success) {
+        if (result.autoLogin) {
+          // If auto-login was successful, redirect to dashboard
+          router.push("/")
+        } else {
+          // If auto-login failed but registration was successful, redirect to login
+          router.push("/login?registered=true")
+        }
       } else {
         setError("Registration failed. Please try again.")
       }
-    } catch (error) {
+    } catch (error: any) {
       // If there's an error with specific message from the API
       if (error.response && error.response.data && error.response.data.message) {
         setError(error.response.data.message)

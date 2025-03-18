@@ -17,7 +17,10 @@ type AuthContextType = {
   user: User | null
   loading: boolean
   login: (email: string, password: string) => Promise<boolean>
-  register: (firstName: string, lastName: string, email: string, password: string) => Promise<boolean>
+  register: (firstName: string, lastName: string, email: string, password: string) => Promise<{
+    success: boolean
+    autoLogin: boolean
+  }>
   logout: () => void
   isAuthenticated: boolean
 }
@@ -71,12 +74,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkUser()
   }, [])
 
-  const login = async (email: string, password: string) => {
+  // Centralized authenticate function that handles the user authentication process
+  const authenticate = async (email: string, password: string) => {
     if (!email || !password) return false;
     
     try {
-      setLoading(true);
-      
       // Make a real API call to your backend
       const response = await UtilApiService.post('/users/login', { 
         email, 
@@ -85,15 +87,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Assuming the response includes user data and token
       const { token, user } = response;
-
-      // const user = {
-      //   id: "ID",
-      //   firstName: "First Name",
-      //   lastName: "Last Name",
-      //   name: "First Name Last Name",
-      //   email: "email@email.com",
-      //   role: "role"
-      // }
       
       // Store token for future authenticated requests
       localStorage.setItem('token', token);
@@ -109,19 +102,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       return true;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Authentication error:', error);
       return false;
+    }
+  };
+
+  const login = async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const result = await authenticate(email, password);
+      return result;
     } finally {
       setLoading(false);
     }
   };
   
   const register = async (firstName: string, lastName: string, email: string, password: string) => {
-    if (!firstName || !lastName || !email || !password) return false;
+    if (!firstName || !lastName || !email || !password) return { success: false, autoLogin: false };
     
+    setLoading(true);
     try {
-      setLoading(true);
-      
       // Make a POST request to your registration endpoint
       await UtilApiService.post('/users/register', {
         firstName,
@@ -130,11 +130,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password
       });
       
-      // Registration successful
-      return true;
+      // After successful registration, attempt to automatically log in
+      try {
+        const loginSuccess = await authenticate(email, password);
+        return { success: true, autoLogin: loginSuccess };
+      } catch (loginError) {
+        console.error('Auto-login error after registration:', loginError);
+        return { success: true, autoLogin: false };
+      }
     } catch (error) {
       console.error('Registration error:', error);
-      return false;
+      return { success: false, autoLogin: false };
     } finally {
       setLoading(false);
     }
@@ -143,6 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setUser(null)
     localStorage.removeItem("user")
+    localStorage.removeItem("token")
     
     // Remove the cookie
     document.cookie = "user=; path=/; max-age=0";
@@ -164,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider")
