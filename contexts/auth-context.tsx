@@ -29,21 +29,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  // Check if user is already logged in on mount
+  // Initialize user from localStorage on component mount
   useEffect(() => {
-    const checkAuth = async () => {
-      const storedUser = localStorage.getItem("user")
-      if (storedUser) {
-        try {
-          setUser(JSON.parse(storedUser))
-        } catch (e) {
-          localStorage.removeItem("user")
+    const checkUser = () => {
+      try {
+        // Check for cookie first
+        const hasCookie = document.cookie.split(';').some(item => item.trim().startsWith('user='))
+        
+        if (hasCookie) {
+          const storedUser = localStorage.getItem('user')
+          if (storedUser && storedUser !== 'undefined') {
+            const parsedUser = JSON.parse(storedUser)
+            console.log("Restored user session:", parsedUser)
+            setUser(parsedUser)
+          } else {
+            // Cookie exists but no user in localStorage
+            console.log("Cookie exists but no user data found - recreating session")
+            // Create a minimal user object for session restoration
+            const minimalUser = {
+              id: "restored",
+              firstName: "User",
+              lastName: "Session",
+              name: "User Session",
+              email: "user@example.com"
+            }
+            setUser(minimalUser)
+            localStorage.setItem('user', JSON.stringify(minimalUser))
+          }
+        } else {
+          console.log("No authentication cookie found")
+          // Clear any stale user data
+          localStorage.removeItem('user')
         }
+      } catch (error) {
+        console.error('Error parsing user from localStorage', error)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
     
-    checkAuth()
+    checkUser()
   }, [])
 
   const login = async (email: string, password: string) => {
@@ -52,36 +77,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       
-      // TEMPORARY: For testing when backend is not available
-      if (process.env.NODE_ENV === 'development') {
-        console.log("Using mock login data for development");
-        await new Promise(resolve => setTimeout(resolve, 800)); // Simulate API delay
-        
-        const mockUser = {
-          id: "1",
-          firstName: email.split('@')[0],
-          lastName: "User",
-          name: email.split('@')[0] + " User",
-          email,
-          role: "user"
-        };
-        
-        setUser(mockUser);
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        localStorage.setItem('token', 'mock-token-for-development');
-        document.cookie = `user=true; path=/; max-age=${60 * 60 * 24 * 7}`;
-        
-        return true;
-      }
-      
-      // Regular API call (will fail with ERR_NETWORK until backend is fixed)
+      // Make a real API call to your backend
       const response = await UtilApiService.post('/users/login', { 
         email, 
         password 
       });
       
-      // Assuming the response includes a token and user data
+      // Assuming the response includes user data and token
       const { token, user } = response;
+
+      // const user = {
+      //   id: "ID",
+      //   firstName: "First Name",
+      //   lastName: "Last Name",
+      //   name: "First Name Last Name",
+      //   email: "email@email.com",
+      //   role: "role"
+      // }
       
       // Store token for future authenticated requests
       localStorage.setItem('token', token);
