@@ -1,8 +1,6 @@
 import "./globals.css"
 import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Sidebar } from "@/components/sidebar"
-import { TopNav } from "@/components/top-nav"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SettingsProvider } from "@/contexts/settings-context"
 import { AuthProvider } from "@/contexts/auth-context"
@@ -13,7 +11,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata = {
   title: "Flowers&Saints Dashboard",
   description: "A modern, responsive financial dashboard",
-    generator: 'v0.dev'
+  generator: 'v0.dev'
 }
 
 export default function RootLayout({
@@ -37,7 +35,5 @@ export default function RootLayout({
     </html>
   )
 }
-
-
 
 import './globals.css'

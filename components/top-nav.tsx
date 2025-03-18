@@ -55,6 +55,7 @@ export function TopNav() {
               <DropdownMenuItem onClick={logout}>Log out</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
       </div>
     </header>
   )
