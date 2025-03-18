@@ -38,7 +38,7 @@ apiClient.interceptors.response.use(
     // Handle 401 Unauthorized errors (e.g., token expired)
     if (error.response && error.response.status === 401) {
       // Clear localStorage and redirect to login
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && window.location.pathname != '/login') {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         
