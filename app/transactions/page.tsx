@@ -1,7 +1,7 @@
 "use client"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
-import { useState, useEffect } from "react"
+import { useState, useEffect, FormEvent } from "react"
 import { 
   Table, 
   TableBody, 
@@ -36,7 +36,7 @@ import {
   Plus,
   Repeat,
   CreditCard,
-  Calendar,
+  Calendar as CalendarIcon,
   Tag,
   ChevronLeft, 
   ChevronRight, 
@@ -46,6 +46,24 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { PageTransition } from "@/components/page-transition"
 import UtilApiService from "@/lib/utilApiService"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { format } from "date-fns"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { toast } from "sonner"
+import { cn } from "@/lib/utils"
 
 // Define our category type
 interface Category {
@@ -91,6 +109,18 @@ interface TransactionResponse {
   transactions: Transaction[]
 }
 
+// Add to existing interfaces
+enum CreditDebitEnum {
+  DEBIT = 0,
+  CREDIT = 1
+}
+
+enum TransactionTypeEnum {
+  SINGLE = 0,
+  RECURRING = 1,
+  INSTALLMENTS = 2
+}
+
 export default function TransactionsPage() {
   const [transactionData, setTransactionData] = useState<TransactionResponse | null>(null)
   const [loading, setLoading] = useState(false)
@@ -98,6 +128,23 @@ export default function TransactionsPage() {
   const [filter, setFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  // Add these new state variables for the modal
+  const [addModalOpen, setAddModalOpen] = useState(false)
+  const [paymentTypesList, setPaymentTypesList] = useState<PaymentType[]>([])
+  const [categoriesList, setCategoriesList] = useState<Category[]>([])
+
+  // Form state
+  const [newTransaction, setNewTransaction] = useState({
+    amount: 0.00,
+    note: "",
+    transactionDate: new Date(),
+    paymentTypeId: 0,
+    creditDebit: CreditDebitEnum.DEBIT,
+    categoryId: 0,
+    installmentsNumber: 1,
+    transactionType: TransactionTypeEnum.SINGLE
+  })
 
   useEffect(() => {
     fetchTransactions(currentPage, itemsPerPage)
@@ -198,9 +245,140 @@ export default function TransactionsPage() {
       case "RECURRING":
         return <Repeat className="h-4 w-4" />
       default:
-        return <Calendar className="h-4 w-4" />
+        return <CalendarIcon className="h-4 w-4" />
     }
   }
+
+  // Fetch payment methods and categories for the dropdown
+  const fetchFormData = async () => {
+    try {
+      // Fetch payment methods
+      const paymentTypesResponse = await UtilApiService.get('/paymentType');
+      if (paymentTypesResponse) {
+        setPaymentTypesList(paymentTypesResponse);
+        
+        // Set default payment type if available
+        if (paymentTypesResponse.length > 0) {
+          setNewTransaction(prev => ({
+            ...prev,
+            paymentTypeId: paymentTypesResponse[0].id
+          }));
+        }
+      }
+      
+      // Fetch categories
+      const categoriesResponse = await UtilApiService.get('/categories');
+      if (categoriesResponse) {
+        setCategoriesList(categoriesResponse);
+        
+        // Set default category if available
+        if (categoriesResponse.length > 0) {
+          setNewTransaction(prev => ({
+            ...prev,
+            categoryId: categoriesResponse[0].id
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching form data:', error);
+      toast.error("Failed to load form data. Please try again.")
+    }
+  };
+
+  // Handle opening the add transaction modal
+  const handleOpenAddModal = () => {
+    fetchFormData();
+    setAddModalOpen(true);
+  };
+
+  // Add this utility function for amount formatting
+  const formatAmountInput = (value: string): string => {
+    // Remove any non-digit characters
+    const digits = value.replace(/\D/g, '');
+    
+    // Handle empty or single digit input
+    if (digits.length === 0) return '0.00';
+    if (digits.length === 1) return `0.0${digits}`;
+    if (digits.length === 2) return `0.${digits}`;
+    
+    // Format with decimal point
+    const decimalPosition = digits.length - 2;
+    return `${digits.slice(0, decimalPosition)}.${digits.slice(decimalPosition)}`;
+  };
+
+  // Update the handleFormChange function to include special handling for amount
+  const handleFormChange = (field: string, value: any) => {
+    if (field === 'amount' && typeof value === 'string') {
+      // Format the amount with cents-first approach
+      const formattedAmount = formatAmountInput(value);
+      setNewTransaction(prev => ({
+        ...prev,
+        amount: parseFloat(formattedAmount)
+      }));
+    } else {
+      setNewTransaction(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
+  };
+
+  // Handle transaction type change and reset installments if needed
+  const handleTransactionTypeChange = (value: TransactionTypeEnum) => {
+    const installmentsNumber = value === TransactionTypeEnum.INSTALLMENTS ? 2 : 1;
+    
+    setNewTransaction(prev => ({
+      ...prev,
+      transactionType: value,
+      installmentsNumber
+    }));
+  };
+
+  // Format date for API
+  const formatDateForApi = (date: Date): string => {
+    return format(date, "yyyy-MM-dd");
+  };
+
+  // Update the handleAddTransaction function to include toast success
+  const handleAddTransaction = async (e: FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const transactionData = {
+        ...newTransaction,
+        transactionDate: formatDateForApi(newTransaction.transactionDate)
+      };
+      
+      const response = await UtilApiService.post('/transactions/' + transactionData.categoryId, transactionData);
+      
+      if (response) {
+        // Reset form
+        resetTransactionForm();
+        
+        // Show success toast
+        toast.success("Transaction added successfully!")
+        
+        // Refresh transactions list
+        fetchTransactions(currentPage, itemsPerPage);
+      }
+    } catch (error) {
+      console.error('Error adding transaction:', error);
+      toast.error("Failed to add transaction")
+    }
+  };
+
+  const resetTransactionForm = () => {
+    setNewTransaction({
+      amount: 0.00,
+      note: "",
+      transactionDate: new Date(),
+      paymentTypeId: 0,
+      creditDebit: CreditDebitEnum.DEBIT,
+      categoryId: 0,
+      installmentsNumber: 1,
+      transactionType: TransactionTypeEnum.SINGLE
+    });
+  };
 
   return (
     <AuthenticatedLayout>
@@ -208,7 +386,7 @@ export default function TransactionsPage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
-            <Button className="flex items-center gap-2">
+            <Button className="flex items-center gap-2" onClick={handleOpenAddModal}>
               <Plus className="h-4 w-4" />
               Add Transaction
             </Button>
@@ -442,6 +620,283 @@ export default function TransactionsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Add Transaction Modal */}
+          <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
+            <DialogContent className="sm:max-w-[550px]">
+              <DialogHeader>
+                <DialogTitle>Add New Transaction</DialogTitle>
+                <DialogDescription>
+                  Enter the details for your new transaction.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <form onSubmit={handleAddTransaction}>
+                <div className="grid gap-4 py-4">
+                  {/* First row: Amount, Transaction Type */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="amount">Amount</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2">$</span>
+                        <Input
+                          id="amount"
+                          className="pl-7 text-right"
+                          value={newTransaction.amount.toFixed(2)}
+                          onChange={(e) => {
+                            const rawValue = e.target.value.replace(/[^\d]/g, '');
+                            handleFormChange('amount', rawValue);
+                          }}
+                          placeholder="0.00"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="transactionType">Transaction Type</Label>
+                      <Select 
+                        value={newTransaction.transactionType.toString()} 
+                        onValueChange={(value) => handleTransactionTypeChange(parseInt(value) as TransactionTypeEnum)}
+                      >
+                        <SelectTrigger id="transactionType">
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={TransactionTypeEnum.SINGLE.toString()}>Single</SelectItem>
+                          <SelectItem value={TransactionTypeEnum.RECURRING.toString()}>Recurring</SelectItem>
+                          <SelectItem value={TransactionTypeEnum.INSTALLMENTS.toString()}>Installments</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  {/* Second row: Note */}
+                  <div className="space-y-2">
+                    <Label htmlFor="note">Note</Label>
+                    <Input
+                      id="note"
+                      value={newTransaction.note}
+                      onChange={(e) => handleFormChange('note', e.target.value)}
+                      placeholder="Transaction description"
+                      required
+                    />
+                  </div>
+                  
+                  {/* Third row: Date and Credit/Debit */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="transactionDate">Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal"
+                            id="transactionDate"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {newTransaction.transactionDate ? format(newTransaction.transactionDate, "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent 
+                          className="w-auto p-0" 
+                          align="start"
+                          side="bottom"
+                          sideOffset={5}
+                        >
+                          <div className="p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => {
+                                  const prevMonth = new Date(newTransaction.transactionDate);
+                                  prevMonth.setMonth(prevMonth.getMonth() - 1);
+                                  setNewTransaction({...newTransaction, transactionDate: prevMonth});
+                                }}
+                              >
+                                <ChevronLeft className="h-4 w-4" />
+                                <span className="sr-only">Previous month</span>
+                              </Button>
+                              
+                              <div className="flex gap-1">
+                                <Select
+                                  value={newTransaction.transactionDate.getFullYear().toString()}
+                                  onValueChange={(value) => {
+                                    const newDate = new Date(newTransaction.transactionDate);
+                                    newDate.setFullYear(parseInt(value));
+                                    setNewTransaction({...newTransaction, transactionDate: newDate});
+                                  }}
+                                >
+                                  <SelectTrigger className="h-7 w-[4.5rem]">
+                                    <SelectValue placeholder="Year" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Array.from({length: 10}, (_, i) => new Date().getFullYear() - 5 + i).map((year) => (
+                                      <SelectItem key={year} value={year.toString()}>
+                                        {year}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                
+                                <Select
+                                  value={newTransaction.transactionDate.getMonth().toString()}
+                                  onValueChange={(value) => {
+                                    const newDate = new Date(newTransaction.transactionDate);
+                                    newDate.setMonth(parseInt(value));
+                                    setNewTransaction({...newTransaction, transactionDate: newDate});
+                                  }}
+                                >
+                                  <SelectTrigger className="h-7 w-[6rem]">
+                                    <SelectValue placeholder="Month" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {['January', 'February', 'March', 'April', 'May', 'June', 'July', 
+                                      'August', 'September', 'October', 'November', 'December'].map((month, index) => (
+                                      <SelectItem key={month} value={index.toString()}>
+                                        {month}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => {
+                                  const nextMonth = new Date(newTransaction.transactionDate);
+                                  nextMonth.setMonth(nextMonth.getMonth() + 1);
+                                  setNewTransaction({...newTransaction, transactionDate: nextMonth});
+                                }}
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                                <span className="sr-only">Next month</span>
+                              </Button>
+                            </div>
+                            
+                            <div className="mb-2">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => setNewTransaction({...newTransaction, transactionDate: new Date()})}
+                              >
+                                Today
+                              </Button>
+                            </div>
+                            
+                            <CalendarComponent
+                              mode="single"
+                              selected={newTransaction.transactionDate}
+                              onSelect={(date) => handleFormChange('transactionDate', date || new Date())}
+                              initialFocus
+                              defaultMonth={newTransaction.transactionDate}
+                              month={newTransaction.transactionDate}
+                              classNames={{
+                                day: cn(
+                                  "h-9 w-9 p-0 font-normal aria-selected:opacity-100",
+                                  "hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+                                ),
+                                head_row: "flex w-full",
+                                head_cell: "text-muted-foreground w-9 font-normal text-[0.8rem] flex justify-center",
+                                row: "flex w-full mt-2",
+                                cell: "h-9 w-9 text-center text-sm p-0 relative flex items-center justify-center",
+                                nav: "hidden",
+                                caption: "flex justify-center pt-1 relative items-center",
+                                caption_label: "text-sm font-medium hidden",
+                                table: "w-full border-collapse space-y-1 rounded-md",
+                                month: "space-y-4"
+                              }}
+                            />
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="creditDebit">Type</Label>
+                      <Select 
+                        value={newTransaction.creditDebit.toString()} 
+                        onValueChange={(value) => handleFormChange('creditDebit', parseInt(value))}
+                      >
+                        <SelectTrigger id="creditDebit">
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={CreditDebitEnum.DEBIT.toString()}>Expense (Debit)</SelectItem>
+                          <SelectItem value={CreditDebitEnum.CREDIT.toString()}>Income (Credit)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  {/* Fourth row: Payment Method and Category */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentTypeId">Payment Method</Label>
+                      <Select 
+                        value={newTransaction.paymentTypeId.toString()} 
+                        onValueChange={(value) => handleFormChange('paymentTypeId', parseInt(value))}
+                      >
+                        <SelectTrigger id="paymentTypeId">
+                          <SelectValue placeholder="Select payment method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {paymentTypesList.map((payment) => (
+                            <SelectItem key={payment.id} value={payment.id.toString()}>
+                              {payment.description} (*{payment.lastCardNumber})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="categoryId">Category</Label>
+                      <Select 
+                        value={newTransaction.categoryId.toString()} 
+                        onValueChange={(value) => handleFormChange('categoryId', parseInt(value))}
+                      >
+                        <SelectTrigger id="categoryId">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categoriesList.map((category) => (
+                            <SelectItem key={category.id} value={category.id.toString()}>
+                              {category.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  {/* Show installments field only when transaction type is INSTALLMENTS */}
+                  {newTransaction.transactionType === TransactionTypeEnum.INSTALLMENTS && (
+                    <div className="space-y-2">
+                      <Label htmlFor="installmentsNumber">Number of Installments</Label>
+                      <Input
+                        id="installmentsNumber"
+                        type="number"
+                        min="2"
+                        value={newTransaction.installmentsNumber}
+                        onChange={(e) => handleFormChange('installmentsNumber', parseInt(e.target.value))}
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
+                
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setAddModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">Add Transaction</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </PageTransition>
     </AuthenticatedLayout>
