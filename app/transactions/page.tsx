@@ -1,7 +1,7 @@
 "use client"
 
 import AuthenticatedLayout from "@/components/authenticated-layout"
-import { useState, useEffect, FormEvent } from "react"
+import { useState, useEffect, FormEvent, useRef } from "react"
 import { 
   Table, 
   TableBody, 
@@ -42,7 +42,8 @@ import {
   ChevronRight, 
   ChevronsLeft, 
   ChevronsRight,
-  Info
+  Info,
+  Upload
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { PageTransition } from "@/components/page-transition"
@@ -65,6 +66,7 @@ import {
 } from "@/components/ui/popover"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { Checkbox } from "@/components/ui/checkbox"
 
 // Define our category type
 interface Category {
@@ -147,6 +149,16 @@ export default function TransactionsPage() {
     transactionType: TransactionTypeEnum.SINGLE
   })
 
+  const [importModalOpen, setImportModalOpen] = useState(false)
+
+  const [commonValues, setCommonValues] = useState({
+    categoryId: 0,
+    paymentTypeId: 0,
+    transactionType: TransactionTypeEnum.SINGLE,
+    creditDebit: CreditDebitEnum.DEBIT
+  })
+
+  // Fetch categories and payment types when component mounts
   useEffect(() => {
     fetchTransactions(currentPage, itemsPerPage)
   }, [currentPage, itemsPerPage])
@@ -387,10 +399,16 @@ export default function TransactionsPage() {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold tracking-tight">Transactions</h1>
-            <Button className="flex items-center gap-2" onClick={handleOpenAddModal}>
-              <Plus className="h-4 w-4" />
-              Add Transaction
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={() => setImportModalOpen(true)}>
+                <Upload className="h-3 w-3" />
+                Add with file
+              </Button>
+              <Button className="flex items-center gap-2" onClick={handleOpenAddModal}>
+                <Plus className="h-4 w-4" />
+                Add Transaction
+              </Button>
+            </div>
           </div>
 
           <Card>
@@ -915,8 +933,674 @@ export default function TransactionsPage() {
               </form>
             </DialogContent>
           </Dialog>
+
+          {/* CSV Import Modal */}
+          <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+            <DialogContent className="sm:max-w-[650px]">
+              <DialogHeader>
+                <DialogTitle>Import Transactions from CSV</DialogTitle>
+                <DialogDescription>
+                  Upload a CSV file to add multiple transactions at once.
+                </DialogDescription>
+              </DialogHeader>
+              
+              <CSVImportForm 
+                onClose={() => setImportModalOpen(false)}
+                onSuccess={() => {
+                  setImportModalOpen(false)
+                  fetchTransactions(currentPage, itemsPerPage)
+                }}
+              />
+            </DialogContent>
+          </Dialog>
         </div>
       </PageTransition>
     </AuthenticatedLayout>
+  )
+}
+
+// CSV Import Form Component
+interface CSVImportFormProps {
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function CSVImportForm({ onClose, onSuccess }: CSVImportFormProps): React.ReactNode {
+  const [categoriesList, setCategoriesList] = useState<Category[]>([])
+  const [paymentTypesList, setPaymentTypesList] = useState<PaymentType[]>([])
+  const [step, setStep] = useState(1)
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [separator, setSeparator] = useState(";")
+  const [fileError, setFileError] = useState("")
+  const [parsedData, setParsedData] = useState<any[]>([])
+  const [headers, setHeaders] = useState<string[]>([])
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
+  const [useCommonValues, setUseCommonValues] = useState(true)
+  const [commonValues, setCommonValues] = useState({
+    categoryId: 0,
+    paymentTypeId: 0,
+    transactionType: TransactionTypeEnum.SINGLE,
+    creditDebit: CreditDebitEnum.DEBIT
+  })
+  const [processingStatus, setProcessingStatus] = useState({
+    isProcessing: false,
+    processed: 0,
+    total: 0,
+    errors: 0
+  })
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
+  
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch categories and payment types when component mounts
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  // Function to fetch payment types and categories
+  const fetchData = async () => {
+    try {
+      // Fetch categories
+      const categoriesResponse = await UtilApiService.get('/categories')
+      if (categoriesResponse) {
+        setCategoriesList(categoriesResponse)
+        
+        // Set default category
+        if (categoriesResponse.length > 0) {
+          setCommonValues(prev => ({
+            ...prev,
+            categoryId: categoriesResponse[0].id
+          }))
+        }
+      }
+      
+      // Fetch payment types
+      const paymentTypesResponse = await UtilApiService.get('/paymentType')
+      if (paymentTypesResponse) {
+        setPaymentTypesList(paymentTypesResponse)
+        
+        // Set default payment type
+        if (paymentTypesResponse.length > 0) {
+          setCommonValues(prev => ({
+            ...prev,
+            paymentTypeId: paymentTypesResponse[0].id
+          }))
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching payment types and categories:', error)
+      toast.error('Failed to load payment types and categories')
+    }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) {
+      setCsvFile(null)
+      setFileError("")
+      return
+    }
+
+    const file = files[0]
+    
+    // Validate file type
+    if (!file.name.endsWith('.csv') && !file.name.endsWith('.txt')) {
+      setFileError("Only CSV or TXT files are allowed")
+      setCsvFile(null)
+      return
+    }
+    
+    // Validate file size (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setFileError("File size cannot exceed 5MB")
+      setCsvFile(null)
+      return
+    }
+    
+    setCsvFile(file)
+    setFileError("")
+  }
+  
+  const handleFileUpload = async () => {
+    if (!csvFile) return
+    
+    setStep(2)
+    
+    try {
+      const text = await csvFile.text()
+      const rows = text.split('\n').filter(row => row.trim().length > 0)
+      
+      if (rows.length === 0) {
+        setFileError("The file appears to be empty")
+        setStep(1)
+        return
+      }
+      
+      // Extract headers and rows
+      const headerRow = rows[0].split(separator)
+      setHeaders(headerRow.map(h => h.trim()))
+      
+      // Parse data rows
+      const dataRows = rows.slice(1).map(row => {
+        const values = row.split(separator)
+        
+        // Create an object mapping headers to values
+        return headerRow.reduce((obj, header, index) => {
+          obj[header.trim()] = values[index]?.trim() || ''
+          return obj
+        }, {} as Record<string, string>)
+      })
+      
+      setParsedData(dataRows)
+      
+      // Initialize column mapping with empty values
+      const initialMapping = headerRow.reduce((obj, header) => {
+        obj[header.trim()] = "ignore"
+        return obj
+      }, {} as Record<string, string>)
+      
+      setColumnMapping(initialMapping)
+    } catch (error) {
+      console.error('Error parsing CSV file:', error)
+      setFileError("Failed to parse the file. Please check the file format and try again.")
+      setStep(1)
+    }
+  }
+  
+  const handleColumnMappingChange = (header: string, value: string) => {
+    setColumnMapping(prev => ({
+      ...prev,
+      [header]: value
+    }))
+  }
+  
+  const handleCommonValueChange = (field: string, value: any) => {
+    setCommonValues(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+  
+  const validateAndPrepareTransactions = () => {
+    const errors: string[] = []
+    
+    // Validate that required fields are mapped
+    const requiredFields = ['amount', 'note', 'transactionDate']
+    let missingRequiredFields = false
+    
+    requiredFields.forEach(field => {
+      if (!Object.values(columnMapping).some(value => value === field)) {
+        errors.push(`Required field '${field}' is not mapped to any column`)
+        missingRequiredFields = true
+      }
+    })
+    
+    // Count how many columns are mapped (excluding "ignore")
+    const mappedColumnsCount = Object.values(columnMapping).filter(value => value !== "ignore").length
+    
+    if (mappedColumnsCount < 4) {
+      errors.push(`You need to map at least 4 columns to create a transaction. Currently mapped: ${mappedColumnsCount}`)
+      missingRequiredFields = true
+    }
+    
+    if (missingRequiredFields) {
+      setValidationErrors(errors)
+      return null
+    }
+    
+    // Check if we have category name or payment type name as fields
+    const hasCategoryName = Object.values(columnMapping).includes('categoryName')
+    const hasPaymentTypeName = Object.values(columnMapping).includes('paymentTypeName')
+    
+    // Prepare transactions
+    const transactions = parsedData.map((row, index) => {
+      const transaction: any = { ...commonValues }
+      const tempFields: Record<string, any> = {}
+      
+      // Map columns to transaction fields
+      Object.keys(columnMapping).forEach(header => {
+        const field = columnMapping[header]
+        if (field && field !== "ignore" && row[header] !== undefined) {
+          let value = row[header]
+          
+          // Convert values based on field type
+          switch (field) {
+            case 'amount':
+              value = parseFloat(value.replace(',', '.'))
+              if (isNaN(value)) {
+                errors.push(`Row ${index + 1}: Invalid amount value "${row[header]}"`)
+                value = 0
+              }
+              break
+            case 'transactionDate':
+              try {
+                const date = new Date(value)
+                if (isNaN(date.getTime())) throw new Error("Invalid date")
+                value = format(date, "yyyy-MM-dd")
+              } catch (e) {
+                errors.push(`Row ${index + 1}: Invalid date value "${row[header]}"`)
+                value = format(new Date(), "yyyy-MM-dd")
+              }
+              break
+            case 'installmentsNumber':
+              value = parseInt(value)
+              if (isNaN(value) || value < 1) {
+                errors.push(`Row ${index + 1}: Invalid installments number "${row[header]}"`)
+                value = 1
+              }
+              break
+            case 'transactionType':
+              // Convert text to enum if needed
+              if (typeof value === 'string') {
+                const lowerValue = value.toLowerCase()
+                if (lowerValue.includes('single')) value = TransactionTypeEnum.SINGLE
+                else if (lowerValue.includes('recurring')) value = TransactionTypeEnum.RECURRING
+                else if (lowerValue.includes('installment')) value = TransactionTypeEnum.INSTALLMENTS
+                else {
+                  errors.push(`Row ${index + 1}: Invalid transaction type "${row[header]}"`)
+                  value = TransactionTypeEnum.SINGLE
+                }
+              }
+              break
+            case 'creditDebit':
+              // Convert text to enum if needed
+              if (typeof value === 'string') {
+                const lowerValue = value.toLowerCase()
+                if (lowerValue.includes('credit') || lowerValue.includes('income')) value = CreditDebitEnum.CREDIT
+                else if (lowerValue.includes('debit') || lowerValue.includes('expense')) value = CreditDebitEnum.DEBIT
+                else {
+                  errors.push(`Row ${index + 1}: Invalid credit/debit value "${row[header]}"`)
+                  value = CreditDebitEnum.DEBIT
+                }
+              }
+              break
+            case 'categoryName':
+            case 'paymentTypeName':
+              // Store these in temporary fields, we'll process them later
+              tempFields[field] = value
+              return // Don't add directly to transaction
+          }
+          
+          if (field !== 'categoryName' && field !== 'paymentTypeName') {
+            transaction[field] = value
+          }
+        }
+      })
+      
+      // Process category name if provided
+      if (tempFields.categoryName) {
+        const categoryName = tempFields.categoryName.trim().toLowerCase()
+        const category = categoriesList.find(c => 
+          c.title.toLowerCase() === categoryName
+        )
+        
+        if (category) {
+          transaction.categoryId = category.id
+        } else {
+          errors.push(`Row ${index + 1}: Category "${tempFields.categoryName}" not found`)
+        }
+      }
+      
+      // Process payment type name if provided
+      if (tempFields.paymentTypeName) {
+        const paymentTypeName = tempFields.paymentTypeName.trim().toLowerCase()
+        const paymentType = paymentTypesList.find(p => 
+          p.description.toLowerCase() === paymentTypeName || 
+          `${p.description} (*${p.lastCardNumber})`.toLowerCase() === paymentTypeName
+        )
+        
+        if (paymentType) {
+          transaction.paymentTypeId = paymentType.id
+        } else {
+          errors.push(`Row ${index + 1}: Payment method "${tempFields.paymentTypeName}" not found`)
+        }
+      }
+      
+      return transaction
+    })
+    
+    setValidationErrors(errors)
+    
+    // If there are validation errors, return the transactions but show the errors
+    return errors.length > 0 ? { transactions, hasErrors: true } : { transactions, hasErrors: false }
+  }
+  
+  const handleImport = async () => {
+    const result = validateAndPrepareTransactions()
+    
+    if (!result) return
+    
+    // If there are non-critical errors, ask user if they want to continue
+    if (result.hasErrors) {
+      if (validationErrors.length > 0) {
+        // Show errors, but don't proceed with import yet
+        return
+      }
+    }
+    
+    const transactions = result.transactions
+    
+    setStep(3)
+    setProcessingStatus({
+      isProcessing: true,
+      processed: 0,
+      errors: 0,
+      total: transactions.length
+    })
+    
+    let successCount = 0
+    let errorCount = 0
+    
+    // Process transactions sequentially
+    for (let i = 0; i < transactions.length; i++) {
+      const transaction = transactions[i]
+      
+      try {
+        await UtilApiService.post('/transactions/' + transaction.categoryId, transaction)
+        successCount++
+      } catch (error) {
+        console.error('Error adding transaction:', error)
+        errorCount++
+      }
+      
+      setProcessingStatus({
+        isProcessing: true,
+        processed: i + 1,
+        errors: errorCount,
+        total: transactions.length
+      })
+    }
+    
+    setProcessingStatus({
+      isProcessing: false,
+      processed: transactions.length,
+      errors: errorCount,
+      total: transactions.length
+    })
+    
+    if (errorCount === 0) {
+      toast.success(`Successfully imported ${successCount} transactions`)
+      setTimeout(() => {
+        onSuccess()
+      }, 1500)
+    } else {
+      toast.warning(`Imported ${successCount} transactions with ${errorCount} errors`)
+    }
+  }
+  
+  const resetForm = () => {
+    setCsvFile(null)
+    setSeparator(";")
+    setFileError("")
+    setParsedData([])
+    setHeaders([])
+    setColumnMapping({})
+    setStep(1)
+    setValidationErrors([])
+    setProcessingStatus({
+      isProcessing: false,
+      processed: 0,
+      errors: 0,
+      total: 0
+    })
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+  
+  return (
+    <>
+      {step === 1 && (
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="csvFile">Upload CSV File</Label>
+            <Input
+              id="csvFile"
+              type="file"
+              accept=".csv,.txt"
+              onChange={handleFileChange}
+              ref={fileInputRef}
+            />
+            {fileError && (
+              <p className="text-sm text-red-500">{fileError}</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Only CSV or TXT files. Maximum size: 5MB.
+            </p>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="separator">CSV Separator</Label>
+            <Select value={separator} onValueChange={setSeparator}>
+              <SelectTrigger id="separator" className="w-full">
+                <SelectValue placeholder="Choose separator" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value=";">Semicolon (;)</SelectItem>
+                <SelectItem value=",">Comma (,)</SelectItem>
+                <SelectItem value="|">Pipe (|)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleFileUpload}
+              disabled={!csvFile}
+            >
+              Next
+            </Button>
+          </DialogFooter>
+        </div>
+      )}
+      
+      {step === 2 && (
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-medium">Map CSV columns to transaction fields</h3>
+              <div className="text-sm">
+                <span className={`font-medium ${Object.values(columnMapping).filter(v => v !== "ignore").length >= 4 ? 'text-green-600' : 'text-amber-600'}`}>
+                  {Object.values(columnMapping).filter(v => v !== "ignore").length}
+                </span>
+                <span className="text-muted-foreground"> / 4 columns mapped</span>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Please assign each column from your CSV file to a transaction field (minimum 4 columns required)
+            </p>
+          </div>
+          
+          <div className="space-y-4 max-h-[300px] overflow-y-auto">
+            {headers.map((header, index) => (
+              <div key={index} className="grid grid-cols-2 gap-4 items-center">
+                <Label className="font-medium">{header}</Label>
+                <Select 
+                  value={columnMapping[header]} 
+                  onValueChange={(value) => handleColumnMappingChange(header, value)}
+                >
+                  <SelectTrigger id={`map-${header}`}>
+                    <SelectValue placeholder="Select field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ignore">Ignore this column</SelectItem>
+                    <SelectItem value="amount">Amount</SelectItem>
+                    <SelectItem value="note">Note/Description</SelectItem>
+                    <SelectItem value="transactionDate">Transaction Date</SelectItem>
+                    <SelectItem value="installmentsNumber">Installments Number</SelectItem>
+                    <SelectItem value="transactionType">Transaction Type</SelectItem>
+                    <SelectItem value="creditDebit">Credit/Debit</SelectItem>
+                    <SelectItem value="categoryId">Category ID</SelectItem>
+                    <SelectItem value="categoryName">Category Name</SelectItem>
+                    <SelectItem value="paymentTypeId">Payment Method ID</SelectItem>
+                    <SelectItem value="paymentTypeName">Payment Method Name</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+          
+          <div className="space-y-2 pt-4 border-t">
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="useCommonValues" 
+                checked={useCommonValues}
+                onCheckedChange={(checked) => setUseCommonValues(!!checked)}
+              />
+              <Label htmlFor="useCommonValues">
+                Use common values for all transactions
+              </Label>
+            </div>
+          </div>
+          
+          {useCommonValues && (
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="commonCategory">Category</Label>
+                  <Select 
+                    value={commonValues.categoryId.toString()} 
+                    onValueChange={(value) => handleCommonValueChange('categoryId', parseInt(value))}
+                  >
+                    <SelectTrigger id="commonCategory">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categoriesList.map((category: Category) => (
+                        <SelectItem key={category.id} value={category.id.toString()}>
+                          {category.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="commonPaymentType">Payment Method</Label>
+                  <Select 
+                    value={commonValues.paymentTypeId.toString()} 
+                    onValueChange={(value) => handleCommonValueChange('paymentTypeId', parseInt(value))}
+                  >
+                    <SelectTrigger id="commonPaymentType">
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentTypesList.map((payment: PaymentType) => (
+                        <SelectItem key={payment.id} value={payment.id.toString()}>
+                          {payment.description} (*{payment.lastCardNumber})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="commonTransactionType">Transaction Type</Label>
+                  <Select 
+                    value={commonValues.transactionType.toString()} 
+                    onValueChange={(value) => handleCommonValueChange('transactionType', parseInt(value))}
+                  >
+                    <SelectTrigger id="commonTransactionType">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={TransactionTypeEnum.SINGLE.toString()}>Single</SelectItem>
+                      <SelectItem value={TransactionTypeEnum.RECURRING.toString()}>Recurring</SelectItem>
+                      <SelectItem value={TransactionTypeEnum.INSTALLMENTS.toString()}>Installments</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="commonCreditDebit">Credit/Debit</Label>
+                  <Select 
+                    value={commonValues.creditDebit.toString()} 
+                    onValueChange={(value) => handleCommonValueChange('creditDebit', parseInt(value))}
+                  >
+                    <SelectTrigger id="commonCreditDebit">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={CreditDebitEnum.DEBIT.toString()}>Expense (Debit)</SelectItem>
+                      <SelectItem value={CreditDebitEnum.CREDIT.toString()}>Income (Credit)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {validationErrors.length > 0 && (
+            <div className="pt-4">
+              <p className="text-sm font-medium text-red-500">Please resolve the following issues:</p>
+              <ul className="text-sm text-red-500 list-disc pl-5 mt-1 max-h-[100px] overflow-y-auto">
+                {validationErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setStep(1)}>
+              Back
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleImport}
+              disabled={Object.values(columnMapping).filter(v => v !== "ignore").length < 4}
+            >
+              Import Transactions
+            </Button>
+          </DialogFooter>
+        </div>
+      )}
+      
+      {step === 3 && (
+        <div className="space-y-4 py-4">
+          <div className="space-y-2 text-center">
+            <h3 className="text-lg font-medium">
+              {processingStatus.isProcessing ? 'Importing Transactions...' : 'Import Complete'}
+            </h3>
+            
+            <div className="w-full bg-secondary rounded-full h-2.5 mb-4">
+              <div 
+                className="bg-primary h-2.5 rounded-full" 
+                style={{ width: `${(processingStatus.processed / processingStatus.total) * 100}%` }}
+              ></div>
+            </div>
+            
+            <p className="text-sm">
+              Processed {processingStatus.processed} of {processingStatus.total} transactions
+              {processingStatus.errors > 0 && ` (${processingStatus.errors} errors)`}
+            </p>
+          </div>
+          
+          <DialogFooter>
+            {processingStatus.isProcessing ? (
+              <Button type="button" disabled>
+                Processing...
+              </Button>
+            ) : (
+              <>
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Import Another File
+                </Button>
+                <Button type="button" onClick={onClose}>
+                  Close
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </div>
+      )}
+    </>
   )
 } 
