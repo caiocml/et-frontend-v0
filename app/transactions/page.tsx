@@ -41,7 +41,8 @@ import {
   ChevronLeft, 
   ChevronRight, 
   ChevronsLeft, 
-  ChevronsRight 
+  ChevronsRight,
+  Info
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { PageTransition } from "@/components/page-transition"
@@ -325,7 +326,7 @@ export default function TransactionsPage() {
 
   // Handle transaction type change and reset installments if needed
   const handleTransactionTypeChange = (value: TransactionTypeEnum) => {
-    const installmentsNumber = value === TransactionTypeEnum.INSTALLMENTS ? 2 : 1;
+    const installmentsNumber = value === TransactionTypeEnum.SINGLE ? 1 : 2;
     
     setNewTransaction(prev => ({
       ...prev,
@@ -872,10 +873,27 @@ export default function TransactionsPage() {
                     </div>
                   </div>
                   
-                  {/* Show installments field only when transaction type is INSTALLMENTS */}
-                  {newTransaction.transactionType === TransactionTypeEnum.INSTALLMENTS && (
+                  {/* Show installments field when transaction type is not SINGLE */}
+                  {newTransaction.transactionType !== TransactionTypeEnum.SINGLE && (
                     <div className="space-y-2">
-                      <Label htmlFor="installmentsNumber">Number of Installments</Label>
+                      <div className="flex items-center gap-1">
+                        <Label htmlFor="installmentsNumber">Number of Installments</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" className="h-6 w-6 p-0">
+                              <span className="sr-only">Info</span>
+                              <Info className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-80 text-sm">
+                            {newTransaction.transactionType === TransactionTypeEnum.INSTALLMENTS ? (
+                              <p>For Installments: The transaction amount is divided by the number of installments.</p>
+                            ) : (
+                              <p>For Recurring: The same transaction amount is repeated for the specified number of times.</p>
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                      </div>
                       <Input
                         id="installmentsNumber"
                         type="number"
