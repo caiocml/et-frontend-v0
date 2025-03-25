@@ -68,6 +68,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 import { parse } from "date-fns"
+import { useSearchParams } from 'next/navigation'
 
 // Define our category type
 interface Category {
@@ -161,10 +162,20 @@ export default function TransactionsPage() {
 
   const [dateFormat, setDateFormat] = useState("yyyy-MM-dd")
 
+  const searchParams = useSearchParams()
+
   // Fetch categories and payment types when component mounts
   useEffect(() => {
     fetchTransactions(currentPage, itemsPerPage)
   }, [currentPage, itemsPerPage])
+
+  // Add this useEffect to handle the action=add query parameter
+  useEffect(() => {
+    const action = searchParams.get('action')
+    if (action === 'add') {
+      handleOpenAddModal()
+    }
+  }, [searchParams])
 
   const fetchTransactions = async (page: number, size: number) => {
     setLoading(true)

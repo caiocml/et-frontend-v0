@@ -1,10 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ArrowUpRight, ArrowDownRight } from "lucide-react"
+import { ArrowUpRight, ArrowDownRight, Plus } from "lucide-react"
 import { useState, useEffect } from "react"
 import UtilApiService from "@/lib/utilApiService"
 import Link from "next/link"
 import { format } from "date-fns"
+import { useRouter } from "next/navigation"
 
 // Transaction interface based on API response
 interface Transaction {
@@ -33,6 +34,7 @@ export function RecentTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const router = useRouter()
 
   useEffect(() => {
     const fetchRecentTransactions = async () => {
@@ -56,6 +58,10 @@ export function RecentTransactions() {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     return format(date, "MMM dd, yyyy")
+  }
+
+  const handleAddTransaction = () => {
+    router.push('/transactions?action=add')
   }
 
   return (
@@ -106,11 +112,17 @@ export function RecentTransactions() {
             ))}
           </div>
         )}
-        <Link href="/transactions">
-          <Button className="w-full mt-4" variant="outline">
-            View All Transactions
+        <div className="mt-4 grid grid-cols-1 gap-2">
+          <Button className="w-full flex items-center gap-2" onClick={handleAddTransaction}>
+            <Plus className="h-4 w-4" />
+            Add Transaction
           </Button>
-        </Link>
+          <Link href="/transactions">
+            <Button className="w-full" variant="outline">
+              View All Transactions
+            </Button>
+          </Link>
+        </div>
       </CardContent>
     </Card>
   )
