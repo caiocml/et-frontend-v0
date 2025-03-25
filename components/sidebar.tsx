@@ -97,7 +97,7 @@ export function Sidebar() {
             <div className={cn("flex h-16 items-center gap-2 px-4", isCollapsed && "justify-center px-2")}>
               {!isCollapsed && (
                 <Link href="/" className="flex items-center font-semibold">
-                  <span className="text-lg">Flowers&Saints</span>
+                  <span className="text-lg">Expense Tracker</span>
                 </Link>
               )}
               <Button
