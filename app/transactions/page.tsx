@@ -67,6 +67,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
+import { parse } from "date-fns"
 
 // Define our category type
 interface Category {
@@ -158,6 +159,8 @@ export default function TransactionsPage() {
     creditDebit: CreditDebitEnum.DEBIT
   })
 
+  const [dateFormat, setDateFormat] = useState("yyyy-MM-dd")
+
   // Fetch categories and payment types when component mounts
   useEffect(() => {
     fetchTransactions(currentPage, itemsPerPage)
@@ -243,12 +246,19 @@ export default function TransactionsPage() {
   }
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    })
+    try {
+      // The dateString is already in yyyy-MM-dd format from the backend
+      const [year, month, day] = dateString.split('-')
+      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      return date.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      })
+    } catch (error) {
+      console.error('Error formatting date:', error)
+      return dateString
+    }
   }
 
   const getTransactionTypeIcon = (type: string) => {
@@ -976,6 +986,7 @@ function CSVImportForm({ onClose, onSuccess }: CSVImportFormProps): React.ReactN
   const [headers, setHeaders] = useState<string[]>([])
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({})
   const [useCommonValues, setUseCommonValues] = useState(true)
+  const [dateFormat, setDateFormat] = useState("yyyy-MM-dd")
   const [commonValues, setCommonValues] = useState({
     categoryId: 0,
     paymentTypeId: 0,
@@ -1174,11 +1185,11 @@ function CSVImportForm({ onClose, onSuccess }: CSVImportFormProps): React.ReactN
               break
             case 'transactionDate':
               try {
-                const date = new Date(value)
-                if (isNaN(date.getTime())) throw new Error("Invalid date")
-                value = format(date, "yyyy-MM-dd")
+                const parsedDate = parse(value, dateFormat, new Date())
+                if (isNaN(parsedDate.getTime())) throw new Error("Invalid date")
+                value = format(parsedDate, "yyyy-MM-dd")
               } catch (e) {
-                errors.push(`Row ${index + 1}: Invalid date value "${row[header]}"`)
+                errors.push(`Row ${index + 1}: Invalid date value "${row[header]}" for format "${dateFormat}"`)
                 value = format(new Date(), "yyyy-MM-dd")
               }
               break
@@ -1420,27 +1431,45 @@ function CSVImportForm({ onClose, onSuccess }: CSVImportFormProps): React.ReactN
             {headers.map((header, index) => (
               <div key={index} className="grid grid-cols-2 gap-4 items-center">
                 <Label className="font-medium">{header}</Label>
-                <Select 
-                  value={columnMapping[header]} 
-                  onValueChange={(value) => handleColumnMappingChange(header, value)}
-                >
-                  <SelectTrigger id={`map-${header}`}>
-                    <SelectValue placeholder="Select field" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ignore">Ignore this column</SelectItem>
-                    <SelectItem value="amount">Amount</SelectItem>
-                    <SelectItem value="note">Note/Description</SelectItem>
-                    <SelectItem value="transactionDate">Transaction Date</SelectItem>
-                    <SelectItem value="installmentsNumber">Installments Number</SelectItem>
-                    <SelectItem value="transactionType">Transaction Type</SelectItem>
-                    <SelectItem value="creditDebit">Credit/Debit</SelectItem>
-                    <SelectItem value="categoryId">Category ID</SelectItem>
-                    <SelectItem value="categoryName">Category Name</SelectItem>
-                    <SelectItem value="paymentTypeId">Payment Method ID</SelectItem>
-                    <SelectItem value="paymentTypeName">Payment Method Name</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="space-y-2">
+                  <Select 
+                    value={columnMapping[header]} 
+                    onValueChange={(value) => handleColumnMappingChange(header, value)}
+                  >
+                    <SelectTrigger id={`map-${header}`}>
+                      <SelectValue placeholder="Select field" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ignore">Ignore this column</SelectItem>
+                      <SelectItem value="amount">Amount</SelectItem>
+                      <SelectItem value="note">Note/Description</SelectItem>
+                      <SelectItem value="transactionDate">Transaction Date</SelectItem>
+                      <SelectItem value="installmentsNumber">Installments Number</SelectItem>
+                      <SelectItem value="transactionType">Transaction Type</SelectItem>
+                      <SelectItem value="creditDebit">Credit/Debit</SelectItem>
+                      <SelectItem value="categoryId">Category ID</SelectItem>
+                      <SelectItem value="categoryName">Category Name</SelectItem>
+                      <SelectItem value="paymentTypeId">Payment Method ID</SelectItem>
+                      <SelectItem value="paymentTypeName">Payment Method Name</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {columnMapping[header] === "transactionDate" && (
+                    <Select value={dateFormat} onValueChange={setDateFormat}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select date format" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yyyy-MM-dd">YYYY-MM-DD</SelectItem>
+                        <SelectItem value="dd-MM-yyyy">DD-MM-YYYY</SelectItem>
+                        <SelectItem value="MM/dd/yyyy">MM/DD/YYYY</SelectItem>
+                        <SelectItem value="dd/MM/yyyy">DD/MM/YYYY</SelectItem>
+                        <SelectItem value="yyyy/MM/dd">YYYY/MM/DD</SelectItem>
+                        <SelectItem value="dd.MM.yyyy">DD.MM.YYYY</SelectItem>
+                        <SelectItem value="yyyy.MM.dd">YYYY.MM.DD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
               </div>
             ))}
           </div>
